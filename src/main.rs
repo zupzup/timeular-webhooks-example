@@ -2,7 +2,7 @@ use once_cell::sync::Lazy;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use std::env;
-use warp::{http::StatusCode, Filter, Rejection, Reply};
+use warp::{Filter, Rejection, Reply};
 
 type WebResult<T> = std::result::Result<T, Rejection>;
 type Error = Box<dyn std::error::Error>;
@@ -15,7 +15,7 @@ const BASE_URL: &str = "https://api.timeular.com/api/v3";
 #[serde(rename_all = "camelCase")]
 struct TrackingStartedPayload {
     user_id: String,
-    even_type: String,
+    event_type: String,
     data: TrackingStartedData,
 }
 
@@ -67,7 +67,7 @@ struct Activity {
 #[serde(rename_all = "camelCase")]
 struct TrackingStoppedPayload {
     user_id: String,
-    even_type: String,
+    event_type: String,
     data: TrackingStoppedData,
 }
 
@@ -95,15 +95,25 @@ struct Duration {
 
 #[tokio::main]
 async fn main() -> Result<(), Error> {
-    // let api_key = env::var("TMLR_API_KEY").expect("TMLR_API_KEY needs to be set");
-    // let api_secret = env::var("TMLR_API_SECRET").expect("TMLR_API_SECRET needs to be set");
+    let public_url = env::var("PUBLIC_URL").expect("PUBLIC_URL needs to be set");
+    let api_key = env::var("TMLR_API_KEY").expect("TMLR_API_KEY needs to be set");
+    let api_secret = env::var("TMLR_API_SECRET").expect("TMLR_API_SECRET needs to be set");
 
-    // println!("signing in..");
-    // let token = sign_in(api_key, api_secret).await?;
+    println!("signing in..");
+    let token = sign_in(api_key, api_secret).await?;
 
-    // println!("fetching available events...");
-    // let events = fetch_events(&token).await?;
-    // println!("available events: {:?}", events);
+    println!("fetching available events...");
+    let events = fetch_events(&token).await?;
+    println!("available events: {:?}", events);
+
+    println!("subscribing to started tracking...");
+    subscribe_to_started_tracking(&token, &public_url).await?;
+    println!("subscribing to stopped tracking...");
+    subscribe_to_stopped_tracking(&token, &public_url).await?;
+
+    println!("listing subscriptions...");
+    let subscriptions = list_subscriptions(&token).await?;
+    println!("subscriptions: {:?}", subscriptions);
 
     let started_tracking_route = warp::path!("started-tracking")
         .and(warp::post())
@@ -115,24 +125,93 @@ async fn main() -> Result<(), Error> {
         .and(warp::body::json())
         .and_then(stopped_tracking_handler);
 
-    // TODO: ngrok alternative: https://theboroer.github.io/localtunnel-www/
-    // TODO: subscribe to started-tracking and stopped tracking
-    // TODO: list subscriptions
-    // TODO: create handler for started/stoppped tracking
-    // TODO: unsubscribe
+    let health_route = warp::path!("health").and_then(health_handler);
 
-    warp::serve(started_tracking_route.or(stopped_tracking_route))
-        .run(([127, 0, 0, 1], 8000))
-        .await;
+    warp::serve(
+        started_tracking_route
+            .or(stopped_tracking_route)
+            .or(health_route),
+    )
+    .run(([0, 0, 0, 0], 8000))
+    .await;
     Ok(())
 }
 
+async fn health_handler() -> WebResult<impl Reply> {
+    Ok("OK")
+}
+
 async fn started_tracking_handler(body: TrackingStartedPayload) -> WebResult<impl Reply> {
+    println!("tracking was started with data: {:?}", body);
     Ok("OK")
 }
 
 async fn stopped_tracking_handler(body: TrackingStoppedPayload) -> WebResult<impl Reply> {
+    println!("time entry was created with data: {:?}", body);
     Ok("OK")
+}
+
+#[derive(Serialize, Debug)]
+struct EventRequest {
+    event: &'static str,
+    target_url: String,
+}
+
+async fn subscribe_to_started_tracking(token: &str, public_url: &str) -> Result<(), Error> {
+    let body = EventRequest {
+        event: "trackingStarted",
+        target_url: format!("{}/started-tracking", public_url),
+    };
+    let resp = CLIENT
+        .post(&url("/webhooks/subscription"))
+        .header("Authorization", auth(token))
+        .json(&body)
+        .send()
+        .await?;
+    if resp.status().is_client_error() {
+        println!("error");
+    }
+    Ok(())
+}
+
+async fn subscribe_to_stopped_tracking(token: &str, public_url: &str) -> Result<(), Error> {
+    let body = EventRequest {
+        event: "trackingStopped",
+        target_url: format!("{}/stopped-tracking", public_url),
+    };
+    let resp = CLIENT
+        .post(&url("/webhooks/subscription"))
+        .header("Authorization", auth(token))
+        .json(&body)
+        .send()
+        .await?;
+    if resp.status().is_client_error() {
+        println!("error");
+    }
+    Ok(())
+}
+
+#[derive(Deserialize, Debug)]
+struct SubscriptionsResponse {
+    subscriptions: Vec<Subscription>,
+}
+
+#[derive(Deserialize, Debug)]
+struct Subscription {
+    id: String,
+    event: String,
+    target_url: String,
+}
+
+async fn list_subscriptions(token: &str) -> Result<Vec<Subscription>, Error> {
+    let resp = CLIENT
+        .get(&url("/webhooks/subscription"))
+        .header("Authorization", auth(token))
+        .send()
+        .await?
+        .json::<SubscriptionsResponse>()
+        .await?;
+    Ok(resp.subscriptions)
 }
 
 #[derive(Serialize, Debug)]
