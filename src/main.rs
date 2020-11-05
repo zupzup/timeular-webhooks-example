@@ -74,7 +74,7 @@ struct TrackingStoppedPayload {
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct TrackingStoppedData {
-    new_time_entry: TimeEntry,
+    new_time_entry: Option<TimeEntry>,
 }
 
 #[derive(Deserialize, Debug)]
@@ -151,58 +151,6 @@ async fn stopped_tracking_handler(body: TrackingStoppedPayload) -> WebResult<imp
     Ok("OK")
 }
 
-#[derive(Serialize, Debug)]
-struct EventRequest {
-    event: &'static str,
-    target_url: String,
-}
-
-async fn subscribe_to_started_tracking(token: &str, public_url: &str) -> Result<(), Error> {
-    let body = EventRequest {
-        event: "trackingStarted",
-        target_url: format!("{}/started-tracking", public_url),
-    };
-    let resp = CLIENT
-        .post(&url("/webhooks/subscription"))
-        .header("Authorization", auth(token))
-        .json(&body)
-        .send()
-        .await?;
-    if resp.status().is_client_error() {
-        println!("error");
-    }
-    Ok(())
-}
-
-async fn subscribe_to_stopped_tracking(token: &str, public_url: &str) -> Result<(), Error> {
-    let body = EventRequest {
-        event: "trackingStopped",
-        target_url: format!("{}/stopped-tracking", public_url),
-    };
-    let resp = CLIENT
-        .post(&url("/webhooks/subscription"))
-        .header("Authorization", auth(token))
-        .json(&body)
-        .send()
-        .await?;
-    if resp.status().is_client_error() {
-        println!("error");
-    }
-    Ok(())
-}
-
-#[derive(Deserialize, Debug)]
-struct SubscriptionsResponse {
-    subscriptions: Vec<Subscription>,
-}
-
-#[derive(Deserialize, Debug)]
-struct Subscription {
-    id: String,
-    event: String,
-    target_url: String,
-}
-
 async fn list_subscriptions(token: &str) -> Result<Vec<Subscription>, Error> {
     let resp = CLIENT
         .get(&url("/webhooks/subscription"))
@@ -255,6 +203,58 @@ async fn fetch_events(token: &str) -> Result<Vec<String>, Error> {
         .json::<EventsResponse>()
         .await?;
     Ok(resp.events)
+}
+
+#[derive(Serialize, Debug)]
+struct EventRequest {
+    event: &'static str,
+    target_url: String,
+}
+
+async fn subscribe_to_started_tracking(token: &str, public_url: &str) -> Result<(), Error> {
+    let body = EventRequest {
+        event: "trackingStarted",
+        target_url: format!("{}/started-tracking", public_url),
+    };
+    let resp = CLIENT
+        .post(&url("/webhooks/subscription"))
+        .header("Authorization", auth(token))
+        .json(&body)
+        .send()
+        .await?;
+    if resp.status().is_client_error() {
+        println!("error");
+    }
+    Ok(())
+}
+
+async fn subscribe_to_stopped_tracking(token: &str, public_url: &str) -> Result<(), Error> {
+    let body = EventRequest {
+        event: "trackingStopped",
+        target_url: format!("{}/stopped-tracking", public_url),
+    };
+    let resp = CLIENT
+        .post(&url("/webhooks/subscription"))
+        .header("Authorization", auth(token))
+        .json(&body)
+        .send()
+        .await?;
+    if resp.status().is_client_error() {
+        println!("error");
+    }
+    Ok(())
+}
+
+#[derive(Deserialize, Debug)]
+struct SubscriptionsResponse {
+    subscriptions: Vec<Subscription>,
+}
+
+#[derive(Deserialize, Debug)]
+struct Subscription {
+    id: String,
+    event: String,
+    target_url: String,
 }
 
 fn url(path: &str) -> String {
