@@ -222,9 +222,6 @@ async fn subscribe_to_started_tracking(token: &str, public_url: &str) -> Result<
         .json(&body)
         .send()
         .await?;
-    if resp.status().is_client_error() {
-        println!("error");
-    }
     Ok(())
 }
 
@@ -239,9 +236,6 @@ async fn subscribe_to_stopped_tracking(token: &str, public_url: &str) -> Result<
         .json(&body)
         .send()
         .await?;
-    if resp.status().is_client_error() {
-        println!("error");
-    }
     Ok(())
 }
 
