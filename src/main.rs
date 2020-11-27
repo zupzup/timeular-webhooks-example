@@ -151,6 +151,18 @@ async fn stopped_tracking_handler(body: TrackingStoppedPayload) -> WebResult<imp
     Ok("OK")
 }
 
+#[derive(Deserialize, Debug)]
+struct SubscriptionsResponse {
+    subscriptions: Vec<Subscription>,
+}
+
+#[derive(Deserialize, Debug)]
+struct Subscription {
+    id: String,
+    event: String,
+    target_url: String,
+}
+
 async fn list_subscriptions(token: &str) -> Result<Vec<Subscription>, Error> {
     let resp = CLIENT
         .get(&url("/webhooks/subscription"))
@@ -237,18 +249,6 @@ async fn subscribe_to_stopped_tracking(token: &str, public_url: &str) -> Result<
         .send()
         .await?;
     Ok(())
-}
-
-#[derive(Deserialize, Debug)]
-struct SubscriptionsResponse {
-    subscriptions: Vec<Subscription>,
-}
-
-#[derive(Deserialize, Debug)]
-struct Subscription {
-    id: String,
-    event: String,
-    target_url: String,
 }
 
 fn url(path: &str) -> String {
